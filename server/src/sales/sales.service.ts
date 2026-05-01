@@ -39,15 +39,36 @@ export class SalesService {
   async findByDate(date: Date) {
     const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+    return this.findByRange(startOfDay, endOfDay);
+  }
+
+  async findByRange(from: Date, to: Date) {
     return this.prisma.sale.findMany({
       where: {
         createdAt: {
-          gte: startOfDay,
-          lt: endOfDay
+          gte: from,
+          lte: to
         }
       },
       include: { items: { include: { product: true } } },
       orderBy: { createdAt: 'desc' }
     });
+  }
+
+  async getDailySummary(date: Date = new Date()) {
+    const sales = await this.findByDate(date);
+    const cashTotal = sales
+      .filter((sale) => sale.paymentMethod === 'EFECTIVO')
+      .reduce((sum, sale) => sum + sale.total, 0);
+    const transferTotal = sales
+      .filter((sale) => sale.paymentMethod === 'TRANSFERENCIA')
+      .reduce((sum, sale) => sum + sale.total, 0);
+
+    return {
+      cashTotal,
+      transferTotal,
+      totalBox: cashTotal + transferTotal,
+      transactionCount: sales.length,
+    };
   }
 }

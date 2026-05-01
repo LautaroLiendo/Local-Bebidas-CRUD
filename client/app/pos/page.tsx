@@ -48,7 +48,7 @@ export default function POSPage() {
 
   const formatPrice = (price: number) => {
     // Separador de miles pero sin decimales si no los hay
-    const rounded = Math.round(price * 100) / 100;
+    const rounded = Math.round((Number(price) || 0) * 100) / 100;
     if (rounded % 1 === 0) {
       return rounded.toLocaleString('es-AR');
     }

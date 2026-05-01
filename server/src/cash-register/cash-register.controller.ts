@@ -6,22 +6,48 @@ export class CashRegisterController {
   constructor(private readonly cashRegisterService: CashRegisterService) {}
 
   @Post('save')
-  saveCash(@Body() data: { date: string, opening: number, cash: number, transfer: number }) {
-    return this.cashRegisterService.saveCashSummary({
-      date: new Date(data.date),
-      opening: data.opening,
-      cash: data.cash,
-      transfer: data.transfer
-    });
+  async saveCash(@Body() data: {
+    date: string;
+    opening: number;
+    cash: number;
+    transfer: number;
+    transactionCount?: number;
+    openedAt?: string;
+    closedAt?: string;
+  }) {
+    try {
+      return await this.cashRegisterService.saveCashSummary({
+        date: data.date,
+        opening: data.opening,
+        cash: data.cash,
+        transfer: data.transfer,
+        transactionCount: data.transactionCount,
+        openedAt: data.openedAt,
+        closedAt: data.closedAt
+      });
+    } catch (error) {
+      console.error('Error al guardar caja:', error);
+      throw error;
+    }
   }
 
   @Get('history')
-  getHistory(@Query('limit') limit: string = '30') {
-    return this.cashRegisterService.getCashHistory(parseInt(limit));
+  async getHistory(@Query('limit') limit: string = '30') {
+    try {
+      return await this.cashRegisterService.getCashHistory(parseInt(limit));
+    } catch (error) {
+      console.error('Error al obtener historial:', error);
+      throw error;
+    }
   }
 
   @Get('today')
-  getTodayCash() {
-    return this.cashRegisterService.getTodayCash();
+  async getTodayCash() {
+    try {
+      return await this.cashRegisterService.getTodayCash();
+    } catch (error) {
+      console.error('Error al obtener caja de hoy:', error);
+      throw error;
+    }
   }
 }

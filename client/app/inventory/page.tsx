@@ -5,9 +5,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Upload, ChevronLeft, ChevronRight, AlertTriangle, AlertCircle, Edit2, Plus, Trash2 } from 'lucide-react';
+import { Upload, ChevronLeft, ChevronRight, AlertTriangle, AlertCircle, Edit2, Plus, Trash2, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+
+type Category = {
+  id: number;
+  name: string;
+};
 
 export default function InventoryPage() {
   const [products, setProducts] = useState<any[]>([]);
@@ -18,6 +23,7 @@ export default function InventoryPage() {
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [newCategory, setNewCategory] = useState('');
   const [showNewCategory, setShowNewCategory] = useState(false);
+  const [search, setSearch] = useState('');
   
   const itemsPerPage = 30;
 
@@ -115,6 +121,7 @@ export default function InventoryPage() {
       toast.success('Producto eliminado');
       load();
     } catch (error) {
+      console.error('Error al eliminar producto:', error);
       toast.error('Error al eliminar producto');
     }
   };
@@ -135,10 +142,20 @@ export default function InventoryPage() {
     }
   };
 
-  const totalPages = Math.ceil(products.length / itemsPerPage);
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredProducts = normalizedSearch
+    ? products.filter((product) =>
+        product.name?.toLowerCase().includes(normalizedSearch) ||
+        product.category?.name?.toLowerCase().includes(normalizedSearch) ||
+        String(product.price ?? '').includes(normalizedSearch) ||
+        String(product.stock ?? '').includes(normalizedSearch)
+      )
+    : products;
+
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const currentProducts = products.slice(startIndex, endIndex);
+  const currentProducts = filteredProducts.slice(startIndex, endIndex);
 
   const goToPage = (page: number) => {
     const pageNum = Math.max(1, Math.min(page, totalPages));
@@ -147,6 +164,14 @@ export default function InventoryPage() {
 
   const lowStockProducts = products.filter(p => p.stock <= 2);
   const noStockProducts = products.filter(p => p.stock === 0);
+
+  const formatPrice = (price: number) => {
+    const rounded = Math.round((Number(price) || 0) * 100) / 100;
+    if (rounded % 1 === 0) {
+      return rounded.toLocaleString('es-AR');
+    }
+    return rounded.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
 
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-6">
@@ -182,6 +207,39 @@ export default function InventoryPage() {
             </DialogContent>
           </Dialog>
         </div>
+      </div>
+
+      <div className="bg-white border rounded-xl p-4 shadow-sm">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <Input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setCurrentPage(1);
+            }}
+            placeholder="Buscar producto, categoría, precio o stock..."
+            className="h-11 pl-10 pr-10 font-semibold"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setCurrentPage(1);
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+              aria-label="Limpiar búsqueda"
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
+        {search && (
+          <p className="mt-2 text-sm text-slate-500">
+            {filteredProducts.length} resultado{filteredProducts.length === 1 ? '' : 's'} encontrado{filteredProducts.length === 1 ? '' : 's'}
+          </p>
+        )}
       </div>
 
       {/* Dialog para crear categoría */}
@@ -269,7 +327,7 @@ export default function InventoryPage() {
                 >
                   <TableCell className="font-bold">{p.name}</TableCell>
                   <TableCell className="text-slate-600">{p.category?.name || 'Sin categoría'}</TableCell>
-                  <TableCell>${p.price.toFixed(2)}</TableCell>
+                  <TableCell>${formatPrice(p.price)}</TableCell>
                   <TableCell>
                     <span className={`font-bold px-3 py-1 rounded-lg ${
                       p.stock === 0 
@@ -326,7 +384,7 @@ export default function InventoryPage() {
       {totalPages > 1 && (
         <div className="flex items-center justify-between bg-white border rounded-xl p-4">
           <div className="text-sm text-slate-600">
-            Mostrando {startIndex + 1} a {Math.min(endIndex, products.length)} de {products.length} productos
+            Mostrando {startIndex + 1} a {Math.min(endIndex, filteredProducts.length)} de {filteredProducts.length} productos
           </div>
           
           <div className="flex gap-2">
@@ -368,7 +426,17 @@ export default function InventoryPage() {
   );
 }
 
-function EditProductForm({ product, categories, onSave, onShowNewCategory }: any) {
+function EditProductForm({
+  product,
+  categories,
+  onSave,
+  onShowNewCategory
+}: {
+  product: any;
+  categories: Category[];
+  onSave: (product: any) => void;
+  onShowNewCategory: () => void;
+}) {
   const [formData, setFormData] = useState(product || {});
 
   return (

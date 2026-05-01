@@ -5,6 +5,37 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
+  private parseNumber(value: unknown): number {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    if (value === null || value === undefined) return 0;
+
+    const raw = String(value).trim();
+    if (!raw) return 0;
+
+    const cleaned = raw.replace(/\s/g, '');
+    const hasComma = cleaned.includes(',');
+    const hasDot = cleaned.includes('.');
+
+    if (hasComma && hasDot) {
+      const lastComma = cleaned.lastIndexOf(',');
+      const lastDot = cleaned.lastIndexOf('.');
+      const normalized = lastComma > lastDot
+        ? cleaned.replace(/\./g, '').replace(',', '.')
+        : cleaned.replace(/,/g, '');
+      return Number(normalized) || 0;
+    }
+
+    if (hasComma) {
+      return Number(cleaned.replace(/\./g, '').replace(',', '.')) || 0;
+    }
+
+    if (hasDot && /^\d{1,3}(\.\d{3})+$/.test(cleaned)) {
+      return Number(cleaned.replace(/\./g, '')) || 0;
+    }
+
+    return Number(cleaned.replace(/,/g, '')) || 0;
+  }
+
   async findAll() {
     return this.prisma.product.findMany({
       include: { category: true },
@@ -33,8 +64,8 @@ export class ProductsService {
     return this.prisma.product.create({
       data: {
         name: data.name,
-        price: Number(data.price),
-        stock: Number(data.stock),
+        price: this.parseNumber(data.price),
+        stock: Math.trunc(this.parseNumber(data.stock)),
         cost: 0,
         categoryId: categoryId
       }
@@ -46,8 +77,8 @@ export class ProductsService {
       where: { id },
       data: {
         ...(data.name && { name: data.name }),
-        ...(data.price !== undefined && { price: Number(data.price) }),
-        ...(data.stock !== undefined && { stock: Number(data.stock) }),
+        ...(data.price !== undefined && { price: this.parseNumber(data.price) }),
+        ...(data.stock !== undefined && { stock: Math.trunc(this.parseNumber(data.stock)) }),
         ...(data.categoryId !== undefined && { categoryId: data.categoryId })
       },
       include: { category: true }
@@ -79,8 +110,8 @@ export class ProductsService {
       const created = await this.prisma.product.create({
         data: {
           name: String(item.name),
-          price: Number(item.price || 0),
-          stock: Number(item.stock || 0),
+          price: this.parseNumber(item.price),
+          stock: Math.trunc(this.parseNumber(item.stock)),
           cost: 0,
           categoryId: categoryId
         }

@@ -8,11 +8,14 @@ import { api } from '@/lib/axios';
 import { toast } from 'sonner';
 
 interface CashSummary {
+  id: number;
   date: string;
   opening: number;
   cash: number;
   transfer: number;
-  total: number;
+  transactionCount: number;
+  openedAt: string;
+  closedAt: string;
 }
 
 export default function CashRegisterPage() {
@@ -28,27 +31,41 @@ export default function CashRegisterPage() {
     loadHistory();
   }, []);
 
-  const loadHistory = () => {
+  const formatPrice = (price: number) => {
+    const rounded = Math.round((Number(price) || 0) * 100) / 100;
+    if (rounded % 1 === 0) {
+      return rounded.toLocaleString('es-AR');
+    }
+    return rounded.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const getLocalDateString = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const loadHistory = async () => {
     try {
-      const saved = localStorage.getItem('cashHistory');
-      if (saved) {
-        setHistory(JSON.parse(saved));
-      }
+      const res = await api.get('/cash-register/history?limit=30');
+      setHistory(res.data || []);
     } catch (error) {
       console.error('Error al cargar historial:', error);
+      toast.error('Error al cargar historial');
     }
   };
 
   const loadCashStatus = () => {
     try {
-      // Verificar si hay caja abierta
       const saved = sessionStorage.getItem('cashOpen');
       const amount = sessionStorage.getItem('openingAmount');
+      const openedAt = sessionStorage.getItem('cashOpenedAt');
       
       if (saved === 'true') {
+        if (!openedAt) sessionStorage.setItem('cashOpenedAt', new Date().toISOString());
         setCashOpen(true);
         setOpeningAmount(amount || '');
-        // NO cargar ventas mientras está abierta
         setDayData({ cash: 0, transfer: 0, total: 0, transactionCount: 0 });
       } else {
         setCashOpen(false);
@@ -72,8 +89,10 @@ export default function CashRegisterPage() {
     try {
       sessionStorage.setItem('cashOpen', 'true');
       sessionStorage.setItem('openingAmount', amount.toString());
+      sessionStorage.setItem('cashOpenedAt', new Date().toISOString());
       setCashOpen(true);
-      toast.success(`✓ Caja abierta con $${amount.toFixed(2)}`);
+      setDayData(null); // Limpiar datos del cierre anterior
+      toast.success(`✓ Caja abierta con $${formatPrice(amount)}`);
     } catch (error) {
       toast.error('Error al abrir caja');
     } finally {
@@ -85,9 +104,12 @@ export default function CashRegisterPage() {
     setIsProcessing(true);
     try {
       const amount = parseFloat(openingAmount) || 0;
+      const openedAt = sessionStorage.getItem('cashOpenedAt') || new Date().toISOString();
+      const closedAt = new Date().toISOString();
       
-      // Cargar ventas del día para guardar resumen
-      const salesRes = await api.get('/sales/today');
+      const salesRes = await api.get('/sales/range', {
+        params: { from: openedAt, to: closedAt }
+      });
       const sales = Array.isArray(salesRes.data) ? salesRes.data : [];
       
       const cashTotal = sales
@@ -100,35 +122,39 @@ export default function CashRegisterPage() {
       
       const totalSales = cashTotal + transferTotal;
 
-      // Guardar en historial
-      const today = new Date().toLocaleDateString('es-AR').split('/').reverse().join('-');
-      const newSummary: CashSummary = {
-        date: today,
+      // Guardar en BD
+      const today = new Date();
+      const dateStr = getLocalDateString(today);
+      
+      console.log('Guardando caja:', { dateStr, amount, cashTotal, transferTotal });
+      
+      const saveRes = await api.post('/cash-register/save', {
+        date: dateStr,
         opening: amount,
         cash: cashTotal,
         transfer: transferTotal,
-        total: totalSales
-      };
-
-      const updatedHistory = [newSummary, ...history];
-      localStorage.setItem('cashHistory', JSON.stringify(updatedHistory));
+        transactionCount: sales.length,
+        openedAt,
+        closedAt
+      });
       
-      // Mostrar resumen final
+      console.log('Caja guardada en BD:', saveRes.data);
+
       setDayData({
         cash: cashTotal,
         transfer: transferTotal,
         total: totalSales,
-        transactionCount: sales.length
+        transactionCount: sales.length,
+        opening: amount
       });
 
-      // Limpiar sessionStorage
       sessionStorage.setItem('cashOpen', 'false');
       sessionStorage.removeItem('openingAmount');
+      sessionStorage.removeItem('cashOpenedAt');
       setCashOpen(false);
       setOpeningAmount('');
       
-      // Recargar historial
-      loadHistory();
+      await loadHistory();
       
       toast.success('✓ Caja cerrada correctamente');
     } catch (error) {
@@ -142,6 +168,26 @@ export default function CashRegisterPage() {
   const getTodayName = () => {
     const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
     return days[new Date().getDay()];
+  };
+
+  const getEarned = () => {
+    if (!dayData) return 0;
+    return dayData.total;
+  };
+
+  const getDayName = (dateInput: string | Date) => {
+    const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    let dateObj: Date;
+    
+    if (typeof dateInput === 'string') {
+      // Esperamos formato YYYY-MM-DD
+      const [year, month, day] = dateInput.split('-').map(Number);
+      dateObj = new Date(year, month - 1, day);
+    } else {
+      dateObj = new Date(dateInput);
+    }
+    
+    return days[dateObj.getDay()];
   };
 
   return (
@@ -168,7 +214,7 @@ export default function CashRegisterPage() {
               <LockOpen className="w-6 h-6 text-green-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-5xl font-black text-green-700">${parseFloat(openingAmount || '0').toFixed(2)}</div>
+              <div className="text-5xl font-black text-green-700">${formatPrice(parseFloat(openingAmount || '0'))}</div>
               <p className="text-sm text-green-600 mt-2">Esta es la cantidad de dinero con la que abriste la caja.</p>
             </CardContent>
           </Card>
@@ -219,18 +265,18 @@ export default function CashRegisterPage() {
       )}
 
       {/* Resumen final (solo después de cerrar) */}
-      {!cashOpen && dayData?.total > 0 && (
+      {!cashOpen && dayData && dayData.opening !== undefined && (
         <div className="space-y-4">
           <h2 className="text-lg font-bold text-slate-800">Resumen del Cierre de Hoy ({getTodayName()})</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Monto Inicial</CardTitle>
+                <CardTitle className="text-sm font-medium">Abrí Con</CardTitle>
                 <DollarSign className="w-4 h-4 text-blue-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">${parseFloat(openingAmount || '0').toFixed(2)}</div>
+                <div className="text-2xl font-bold">${formatPrice(dayData.opening)}</div>
               </CardContent>
             </Card>
 
@@ -240,7 +286,7 @@ export default function CashRegisterPage() {
                 <Banknote className="w-4 h-4 text-green-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-600">${dayData.cash.toFixed(2)}</div>
+                <div className="text-2xl font-bold text-green-600">${formatPrice(dayData.cash)}</div>
               </CardContent>
             </Card>
 
@@ -250,7 +296,7 @@ export default function CashRegisterPage() {
                 <CreditCard className="w-4 h-4 text-blue-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-blue-600">${dayData.transfer.toFixed(2)}</div>
+                <div className="text-2xl font-bold text-blue-600">${formatPrice(dayData.transfer)}</div>
               </CardContent>
             </Card>
 
@@ -260,7 +306,7 @@ export default function CashRegisterPage() {
                 <Check className="w-4 h-4 text-purple-500" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-purple-600">${dayData.total.toFixed(2)}</div>
+                <div className="text-2xl font-bold text-purple-600">${formatPrice(getEarned())}</div>
               </CardContent>
             </Card>
           </div>
@@ -271,10 +317,10 @@ export default function CashRegisterPage() {
               <div>
                 <p className="font-semibold text-yellow-900">Dinero en Caja (Efectivo)</p>
                 <p className="text-sm text-yellow-800 mt-1">
-                  Monto inicial: ${parseFloat(openingAmount || '0').toFixed(2)} + Ventas en efectivo: ${dayData.cash.toFixed(2)}
+                  Abrí con: ${formatPrice(dayData.opening)} + Ventas en efectivo: ${formatPrice(dayData.cash)}
                 </p>
                 <p className="text-lg font-black text-yellow-900 mt-2">
-                  Total: ${(parseFloat(openingAmount || '0') + dayData.cash).toFixed(2)}
+                  Total: ${formatPrice(dayData.opening + dayData.cash)}
                 </p>
               </div>
             </div>
@@ -286,20 +332,20 @@ export default function CashRegisterPage() {
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-slate-600">Transacciones del Día:</span>
+                <span className="text-slate-600">Transacciones de esta caja:</span>
                 <span className="font-bold">{dayData.transactionCount}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600">Ventas en Efectivo:</span>
-                <span className="font-bold text-green-600">${dayData.cash.toFixed(2)}</span>
+                <span className="font-bold text-green-600">${formatPrice(dayData.cash)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600">Ventas por Transferencia:</span>
-                <span className="font-bold text-blue-600">${dayData.transfer.toFixed(2)}</span>
+                <span className="font-bold text-blue-600">${formatPrice(dayData.transfer)}</span>
               </div>
               <div className="flex justify-between pt-2 border-t-2">
                 <span className="text-slate-800 font-bold">Total Vendido:</span>
-                <span className="font-black text-purple-600">${dayData.total.toFixed(2)}</span>
+                <span className="font-black text-purple-600">${formatPrice(dayData.total)}</span>
               </div>
             </CardContent>
           </Card>
@@ -323,38 +369,41 @@ export default function CashRegisterPage() {
 
           {showHistory && (
             <div className="border-t-2 border-slate-200 divide-y-2 divide-slate-200">
-              {history.map((summary, idx) => {
-                const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-                const [year, month, day] = summary.date.split('-');
-                const dateObj = new Date(year, parseInt(month) - 1, day);
-                const dayName = dayNames[dateObj.getDay()];
+              {history.map((summary) => {
+                const dayName = getDayName(summary.date);
+                const earned = summary.cash + summary.transfer;
 
                 return (
-                  <div key={idx} className="p-4 hover:bg-slate-50 transition-colors">
+                  <div key={summary.id} className="p-4 hover:bg-slate-50 transition-colors">
                     <div className="flex items-center justify-between mb-3">
                       <div>
                         <p className="font-bold text-slate-800">{dayName}</p>
-                        <p className="text-sm text-slate-600">{summary.date}</p>
+                        <p className="text-sm text-slate-600">
+                          {new Date(summary.openedAt).toLocaleString('es-AR')} - {new Date(summary.closedAt).toLocaleTimeString('es-AR')}
+                        </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-2xl font-black text-purple-600">${summary.total.toFixed(2)}</p>
+                        <p className="text-2xl font-black text-purple-600">${formatPrice(earned)}</p>
                         <p className="text-xs text-slate-500">Total vendido</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-sm">
                       <div className="bg-blue-50 p-2 rounded">
-                        <p className="text-slate-600">Inicial</p>
-                        <p className="font-bold text-blue-600">${summary.opening.toFixed(2)}</p>
+                        <p className="text-slate-600">Abrí Con</p>
+                        <p className="font-bold text-blue-600">${formatPrice(summary.opening)}</p>
                       </div>
                       <div className="bg-green-50 p-2 rounded">
                         <p className="text-slate-600">Efectivo</p>
-                        <p className="font-bold text-green-600">${summary.cash.toFixed(2)}</p>
+                        <p className="font-bold text-green-600">${formatPrice(summary.cash)}</p>
                       </div>
                       <div className="bg-blue-50 p-2 rounded">
                         <p className="text-slate-600">Transferencia</p>
-                        <p className="font-bold text-blue-600">${summary.transfer.toFixed(2)}</p>
+                        <p className="font-bold text-blue-600">${formatPrice(summary.transfer)}</p>
                       </div>
                     </div>
+                    <p className="text-xs text-slate-500 mt-2">
+                      {summary.transactionCount} transacciones
+                    </p>
                   </div>
                 );
               })}
