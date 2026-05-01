@@ -5,14 +5,37 @@ import { PrismaService } from '../prisma/prisma.service';
 export class SalesService {
   constructor(private prisma: PrismaService) {}
 
-  async createSale(data: { paymentMethod: 'EFECTIVO' | 'TRANSFERENCIA', items: { productId: number, quantity: number, unitPrice: number }[] }) {
+  async createSale(data: {
+    paymentMethod: 'EFECTIVO' | 'TRANSFERENCIA',
+    cashReceived?: number,
+    changeGiven?: number,
+    items: { productId: number, quantity: number, unitPrice: number }[]
+  }) {
     const total = data.items.reduce((acc, item) => acc + (item.unitPrice * item.quantity), 0);
+    const cashReceived = data.paymentMethod === 'EFECTIVO' ? Number(data.cashReceived || total) : 0;
+    const changeGiven = data.paymentMethod === 'EFECTIVO' ? Number(data.changeGiven || 0) : 0;
+
     return this.prisma.$transaction(async (tx) => {
+      const products = await tx.product.findMany({
+        where: { id: { in: data.items.map((item) => item.productId) } },
+        select: { id: true, name: true }
+      });
+      const productNames = new Map(products.map((product) => [product.id, product.name]));
+
       const sale = await tx.sale.create({
         data: {
           total,
+          cashReceived,
+          changeGiven,
           paymentMethod: data.paymentMethod,
-          items: { create: data.items.map(item => ({ productId: item.productId, quantity: item.quantity, price: item.unitPrice })) }
+          items: {
+            create: data.items.map(item => ({
+              productId: item.productId,
+              productName: productNames.get(item.productId) || 'Producto',
+              quantity: item.quantity,
+              price: item.unitPrice
+            }))
+          }
         }
       });
       for (const item of data.items) {

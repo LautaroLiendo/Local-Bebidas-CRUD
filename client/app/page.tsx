@@ -13,6 +13,8 @@ interface CashSummary {
   opening: number;
   cash: number;
   transfer: number;
+  cashReceived: number;
+  changeGiven: number;
   transactionCount: number;
   openedAt: string;
   closedAt: string;
@@ -66,11 +68,11 @@ export default function CashRegisterPage() {
         if (!openedAt) sessionStorage.setItem('cashOpenedAt', new Date().toISOString());
         setCashOpen(true);
         setOpeningAmount(amount || '');
-        setDayData({ cash: 0, transfer: 0, total: 0, transactionCount: 0 });
+        setDayData({ cash: 0, transfer: 0, cashReceived: 0, changeGiven: 0, total: 0, transactionCount: 0 });
       } else {
         setCashOpen(false);
         setOpeningAmount('');
-        setDayData({ cash: 0, transfer: 0, total: 0, transactionCount: 0 });
+        setDayData({ cash: 0, transfer: 0, cashReceived: 0, changeGiven: 0, total: 0, transactionCount: 0 });
       }
     } catch (error) {
       console.error('Error al cargar estado de caja:', error);
@@ -119,6 +121,14 @@ export default function CashRegisterPage() {
       const transferTotal = sales
         .filter((s: any) => s.paymentMethod === 'TRANSFERENCIA')
         .reduce((sum: number, s: any) => sum + (s.total || 0), 0);
+
+      const cashReceivedTotal = sales
+        .filter((s: any) => s.paymentMethod === 'EFECTIVO')
+        .reduce((sum: number, s: any) => sum + (s.cashReceived || s.total || 0), 0);
+
+      const changeGivenTotal = sales
+        .filter((s: any) => s.paymentMethod === 'EFECTIVO')
+        .reduce((sum: number, s: any) => sum + (s.changeGiven || 0), 0);
       
       const totalSales = cashTotal + transferTotal;
 
@@ -133,6 +143,8 @@ export default function CashRegisterPage() {
         opening: amount,
         cash: cashTotal,
         transfer: transferTotal,
+        cashReceived: cashReceivedTotal,
+        changeGiven: changeGivenTotal,
         transactionCount: sales.length,
         openedAt,
         closedAt
@@ -143,6 +155,8 @@ export default function CashRegisterPage() {
       setDayData({
         cash: cashTotal,
         transfer: transferTotal,
+        cashReceived: cashReceivedTotal,
+        changeGiven: changeGivenTotal,
         total: totalSales,
         transactionCount: sales.length,
         opening: amount
@@ -269,7 +283,7 @@ export default function CashRegisterPage() {
         <div className="space-y-4">
           <h2 className="text-lg font-bold text-slate-800">Resumen del Cierre de Hoy ({getTodayName()})</h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium">Abrí Con</CardTitle>
@@ -302,6 +316,16 @@ export default function CashRegisterPage() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Cambio Dado</CardTitle>
+                <Banknote className="w-4 h-4 text-red-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-red-600">${formatPrice(dayData.changeGiven)}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium">Total Ganado</CardTitle>
                 <Check className="w-4 h-4 text-purple-500" />
               </CardHeader>
@@ -316,11 +340,14 @@ export default function CashRegisterPage() {
               <AlertCircle className="text-yellow-600 flex-shrink-0 mt-0.5" size={20} />
               <div>
                 <p className="font-semibold text-yellow-900">Dinero en Caja (Efectivo)</p>
-                <p className="text-sm text-yellow-800 mt-1">
+                <p className="hidden">
                   Abrí con: ${formatPrice(dayData.opening)} + Ventas en efectivo: ${formatPrice(dayData.cash)}
                 </p>
+                <p className="text-sm text-yellow-800 mt-1">
+                  Efectivo recibido: ${formatPrice(dayData.cashReceived)} - Cambio dado: ${formatPrice(dayData.changeGiven)}
+                </p>
                 <p className="text-lg font-black text-yellow-900 mt-2">
-                  Total: ${formatPrice(dayData.opening + dayData.cash)}
+                  Total: ${formatPrice(dayData.opening + dayData.cashReceived - dayData.changeGiven)}
                 </p>
               </div>
             </div>
@@ -338,6 +365,14 @@ export default function CashRegisterPage() {
               <div className="flex justify-between">
                 <span className="text-slate-600">Ventas en Efectivo:</span>
                 <span className="font-bold text-green-600">${formatPrice(dayData.cash)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600">Efectivo Recibido:</span>
+                <span className="font-bold text-green-600">${formatPrice(dayData.cashReceived)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600">Cambio Dado:</span>
+                <span className="font-bold text-red-600">-${formatPrice(dayData.changeGiven)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-600">Ventas por Transferencia:</span>

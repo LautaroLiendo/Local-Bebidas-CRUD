@@ -13,6 +13,7 @@ export default function POSPage() {
   const [paymentMethod, setPaymentMethod] = useState<'EFECTIVO' | 'TRANSFERENCIA'>('EFECTIVO');
   const [search, setSearch] = useState('');
   const [changeAmount, setChangeAmount] = useState(0);
+  const [receivedAmount, setReceivedAmount] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [cashOpen, setCashOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -70,10 +71,20 @@ export default function POSPage() {
       return;
     }
     if (cart.length === 0) return;
+    const paidAmount = paymentMethod === 'EFECTIVO' ? Number(receivedAmount || total) : 0;
+    const changeGiven = paymentMethod === 'EFECTIVO' ? Math.max(0, paidAmount - total) : 0;
+
+    if (paymentMethod === 'EFECTIVO' && paidAmount < total) {
+      toast.error('El efectivo recibido no alcanza para pagar la venta');
+      return;
+    }
+
     try {
       // Asegurar que enviamos el precio unitario para cada item
       await SaleService.create({ 
-        paymentMethod, 
+        paymentMethod,
+        cashReceived: paymentMethod === 'EFECTIVO' ? paidAmount : 0,
+        changeGiven,
         items: cart.map(i => ({ 
           productId: i.id, 
           quantity: i.qty, 
@@ -83,6 +94,7 @@ export default function POSPage() {
       toast.success("Venta procesada con éxito");
       setCart([]);
       setChangeAmount(0);
+      setReceivedAmount('');
       loadProducts();
     } catch { toast.error("Error al registrar la venta"); }
   };
@@ -300,8 +312,12 @@ export default function POSPage() {
               <Input 
                 type="number" 
                 placeholder="Recibido" 
+                value={receivedAmount}
                 className="mt-1.5 h-7 lg:h-8 text-xs lg:text-sm font-semibold bg-white border-2 border-yellow-300 rounded"
-                onChange={(e) => setChangeAmount(Math.max(0, Number(e.target.value) - total))}
+                onChange={(e) => {
+                  setReceivedAmount(e.target.value);
+                  setChangeAmount(Math.max(0, Number(e.target.value) - total));
+                }}
               />
             </div>
           )}
@@ -314,7 +330,7 @@ export default function POSPage() {
                   ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-400/50' 
                   : 'bg-slate-600 hover:bg-slate-700 text-slate-200'
               }`}
-              onClick={() => {setPaymentMethod('EFECTIVO'); setChangeAmount(0);}}
+              onClick={() => {setPaymentMethod('EFECTIVO'); setChangeAmount(0); setReceivedAmount('');}}
             >
               <Wallet size={14} className="mr-0.5"/> Efe.
             </Button>
@@ -324,7 +340,7 @@ export default function POSPage() {
                   ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-400/50' 
                   : 'bg-slate-600 hover:bg-slate-700 text-slate-200'
               }`}
-              onClick={() => setPaymentMethod('TRANSFERENCIA')}
+              onClick={() => {setPaymentMethod('TRANSFERENCIA'); setChangeAmount(0); setReceivedAmount('');}}
             >
               <ArrowRightLeft size={14} className="mr-0.5"/> Trans.
             </Button>

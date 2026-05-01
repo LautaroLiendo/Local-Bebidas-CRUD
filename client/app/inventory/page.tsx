@@ -24,6 +24,8 @@ export default function InventoryPage() {
   const [newCategory, setNewCategory] = useState('');
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [search, setSearch] = useState('');
+  const [stockProduct, setStockProduct] = useState<any>(null);
+  const [stockAmount, setStockAmount] = useState('');
   
   const itemsPerPage = 30;
 
@@ -51,6 +53,12 @@ export default function InventoryPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const shouldReplace = confirm('Importar este Excel va a borrar todos los productos actuales y crear una lista nueva. ¿Continuar?');
+    if (!shouldReplace) {
+      e.target.value = '';
+      return;
+    }
+
     try {
       setIsLoading(true);
       const reader = new FileReader();
@@ -68,8 +76,10 @@ export default function InventoryPage() {
             return;
           }
 
-          const response = await api.post('/products/bulk', data);
-          toast.success(`¡${response.data.length} productos importados correctamente!`);
+          const response = await api.post('/products/replace', data);
+          const importedCount = Array.isArray(response.data) ? response.data.length : response.data.created;
+          const deletedCount = Array.isArray(response.data) ? products.length : response.data.deleted;
+          toast.success(`Inventario reemplazado: ${deletedCount} borrados, ${importedCount} cargados`);
           setTimeout(() => load(), 500);
         } catch (error: any) {
           console.error('Error en Excel:', error);
@@ -123,6 +133,30 @@ export default function InventoryPage() {
     } catch (error) {
       console.error('Error al eliminar producto:', error);
       toast.error('Error al eliminar producto');
+    }
+  };
+
+  const handleAddStock = async () => {
+    const amount = Math.trunc(Number(stockAmount));
+
+    if (!stockProduct) return;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Ingresá una cantidad válida');
+      return;
+    }
+
+    try {
+      const currentStock = Number(stockProduct.stock) || 0;
+      await api.put(`/products/${stockProduct.id}`, {
+        stock: currentStock + amount
+      });
+      toast.success(`Stock actualizado: +${amount} unidades`);
+      setStockProduct(null);
+      setStockAmount('');
+      load();
+    } catch (error) {
+      console.error('Error al añadir stock:', error);
+      toast.error('Error al añadir stock');
     }
   };
 
@@ -266,6 +300,43 @@ export default function InventoryPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!stockProduct} onOpenChange={(open) => {
+        if (!open) {
+          setStockProduct(null);
+          setStockAmount('');
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Añadir Stock</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg bg-slate-50 border p-3">
+              <p className="font-bold text-slate-800">{stockProduct?.name}</p>
+              <p className="text-sm text-slate-600">Stock actual: {stockProduct?.stock ?? 0}</p>
+            </div>
+            <div>
+              <label className="text-sm font-semibold block mb-1">Cantidad a sumar</label>
+              <Input
+                type="number"
+                min="1"
+                step="1"
+                value={stockAmount}
+                onChange={(e) => setStockAmount(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddStock();
+                }}
+                placeholder="0"
+                autoFocus
+              />
+            </div>
+            <Button onClick={handleAddStock} className="w-full bg-green-600 hover:bg-green-700">
+              <Plus className="mr-2 w-4 h-4" /> Añadir stock
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Alertas de Stock */}
       {(noStockProducts.length > 0 || lowStockProducts.length > 0) && (
         <div className="space-y-3">
@@ -341,6 +412,18 @@ export default function InventoryPage() {
                   </TableCell>
                   <TableCell className="text-center">
                     <div className="flex gap-2 justify-center">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-green-700 hover:text-green-800"
+                        onClick={() => {
+                          setStockProduct(p);
+                          setStockAmount('');
+                        }}
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Añadir stock
+                      </Button>
                       <Dialog>
                         <DialogTrigger asChild>
                           <Button 

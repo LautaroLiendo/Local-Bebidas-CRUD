@@ -11,6 +11,8 @@ export class CashRegisterController {
     opening: number;
     cash: number;
     transfer: number;
+    cashReceived?: number;
+    changeGiven?: number;
     transactionCount?: number;
     openedAt?: string;
     closedAt?: string;
@@ -21,6 +23,8 @@ export class CashRegisterController {
         opening: data.opening,
         cash: data.cash,
         transfer: data.transfer,
+        cashReceived: data.cashReceived,
+        changeGiven: data.changeGiven,
         transactionCount: data.transactionCount,
         openedAt: data.openedAt,
         closedAt: data.closedAt

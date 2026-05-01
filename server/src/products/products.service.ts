@@ -36,6 +36,18 @@ export class ProductsService {
     return Number(cleaned.replace(/,/g, '')) || 0;
   }
 
+  private cleanName(value: unknown): string {
+    return String(value ?? '').trim().replace(/\s+/g, ' ');
+  }
+
+  private normalizeProductName(value: unknown): string {
+    return this.cleanName(value)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+  }
+
   async findAll() {
     return this.prisma.product.findMany({
       include: { category: true },
@@ -91,33 +103,84 @@ export class ProductsService {
     });
   }
 
-  async bulkCreate(products: any[]) {
-    const results: any[] = []; // Se define el tipo para evitar el error 'never'
+  async replaceFromImport(products: any[]) {
+    const groupedProducts = new Map<string, {
+      name: string;
+      price: number;
+      stock: number;
+      categoryName: string | null;
+    }>();
 
     for (const item of products) {
-      if (!item.name) continue; 
+      const name = this.cleanName(item.name);
+      const normalizedName = this.normalizeProductName(name);
+      if (!normalizedName) continue;
 
-      let categoryId: number | null = null;
-      if (item.categoryName) {
-        const category = await this.prisma.category.upsert({
-          where: { name: String(item.categoryName) },
-          update: {},
-          create: { name: String(item.categoryName) },
+      const stock = Math.trunc(this.parseNumber(item.stock));
+      const price = this.parseNumber(item.price);
+      const categoryName = this.cleanName(item.categoryName) || null;
+      const existing = groupedProducts.get(normalizedName);
+
+      if (existing) {
+        existing.stock += stock;
+        if (price > 0) existing.price = price;
+        if (!existing.categoryName && categoryName) existing.categoryName = categoryName;
+      } else {
+        groupedProducts.set(normalizedName, {
+          name,
+          price,
+          stock,
+          categoryName
         });
-        categoryId = category.id;
+      }
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "SaleItem"
+        SET "productName" = "Product"."name"
+        FROM "Product"
+        WHERE "SaleItem"."productId" = "Product"."id"
+        AND "SaleItem"."productName" = 'Producto eliminado'
+      `;
+      await tx.$executeRaw`UPDATE "SaleItem" SET "productId" = NULL WHERE "productId" IS NOT NULL`;
+      const deletedProducts = await tx.$executeRaw`DELETE FROM "Product"`;
+      await tx.$executeRaw`ALTER SEQUENCE "Product_id_seq" RESTART WITH 1`;
+
+      const results: any[] = [];
+
+      for (const item of groupedProducts.values()) {
+        let categoryId: number | null = null;
+        if (item.categoryName) {
+          const category = await tx.category.upsert({
+            where: { name: item.categoryName },
+            update: {},
+            create: { name: item.categoryName },
+          });
+          categoryId = category.id;
+        }
+
+        const created = await tx.product.create({
+          data: {
+            name: item.name,
+            price: item.price,
+            stock: item.stock,
+            cost: 0,
+            categoryId
+          }
+        });
+        results.push(created);
       }
 
-      const created = await this.prisma.product.create({
-        data: {
-          name: String(item.name),
-          price: this.parseNumber(item.price),
-          stock: Math.trunc(this.parseNumber(item.stock)),
-          cost: 0,
-          categoryId: categoryId
-        }
-      });
-      results.push(created);
-    }
-    return results;
+      return {
+        deleted: Number(deletedProducts),
+        created: results.length,
+        products: results
+      };
+    });
+  }
+
+  async bulkCreate(products: any[]) {
+    return this.replaceFromImport(products);
   }
 }

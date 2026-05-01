@@ -10,6 +10,8 @@ export class CashRegisterService {
     opening: number;
     cash: number;
     transfer: number;
+    cashReceived?: number;
+    changeGiven?: number;
     transactionCount?: number;
     openedAt?: string | Date;
     closedAt?: string | Date;
@@ -30,6 +32,8 @@ export class CashRegisterService {
         opening: Number(data.opening) || 0,
         cash: Number(data.cash) || 0,
         transfer: Number(data.transfer) || 0,
+        cashReceived: Number(data.cashReceived) || 0,
+        changeGiven: Number(data.changeGiven) || 0,
         transactionCount: Number(data.transactionCount) || 0,
         openedAt: data.openedAt ? new Date(data.openedAt) : new Date(),
         closedAt: data.closedAt ? new Date(data.closedAt) : new Date(),

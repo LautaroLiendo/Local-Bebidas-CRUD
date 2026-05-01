@@ -24,7 +24,12 @@ export class ProductsController {
 
   @Post('bulk')
   bulkCreate(@Body() products: any[]) {
-    return this.productsService.bulkCreate(products);
+    return this.productsService.replaceFromImport(products);
+  }
+
+  @Post('replace')
+  replaceAll(@Body() products: any[]) {
+    return this.productsService.replaceFromImport(products);
   }
 
   @Put(':id')

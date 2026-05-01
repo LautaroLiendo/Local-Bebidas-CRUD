@@ -36,7 +36,11 @@ export default function SalesHistoryPage() {
               <TableRow key={sale.id}>
                 <TableCell>{new Date(sale.createdAt).toLocaleString()}</TableCell>
                 <TableCell>{sale.paymentMethod}</TableCell>
-                <TableCell>{sale.items.map((i: any) => i.product?.name || 'Producto eliminado').join(', ')}</TableCell>
+                <TableCell>
+                  {sale.items.map((i: any) => (
+                    `${i.productName || i.product?.name || 'Producto'} x${i.quantity} ($${formatPrice(i.price)})`
+                  )).join(', ')}
+                </TableCell>
                 <TableCell className="text-right font-bold">${formatPrice(sale.total)}</TableCell>
               </TableRow>
             ))}
