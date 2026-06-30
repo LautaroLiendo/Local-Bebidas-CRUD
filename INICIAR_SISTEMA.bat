@@ -1,10 +1,41 @@
 @echo off
+setlocal
 cd /d "%~dp0"
-:: Inicia Backend
-start /b cmd /c "cd server && npm run start:prod"
-:: Inicia Frontend
-start /b cmd /c "cd client && npm run start"
-:: Abre el navegador después de 8 segundos para dar tiempo a que carguen
+
+if not exist ".env" (
+  echo DATABASE_URL=postgresql://postgres:postgres@localhost:5432/gestionlocal?schema=public > .env
+  echo Se creo .env con una URL por defecto. Ajustala si tu PostgreSQL usa otro usuario, password o puerto.
+)
+
+where node >nul 2>nul
+if errorlevel 1 (
+  echo Node.js no esta instalado. Instala la version LTS desde https://nodejs.org/ y vuelve a ejecutar este archivo.
+  exit /b 1
+)
+
+where npm >nul 2>nul
+if errorlevel 1 (
+  echo npm no esta disponible.
+  exit /b 1
+)
+
+echo Instalando dependencias...
+call npm install
+cd server
+call npm install
+cd ..
+cd client
+call npm install
+cd ..
+
+cd server
+npx prisma migrate deploy
+npx prisma generate
+cd ..
+
+start "Backend" cmd /c "cd server && npm run start:dev"
+start "Frontend" cmd /c "cd client && npm run dev"
+
 timeout /t 8 /nobreak >nul
 start http://localhost:3000
-exit
+exit /b 0
