@@ -1,9 +1,9 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { DollarSign, Lock, LockOpen, AlertCircle, Check, CreditCard, Banknote, ChevronDown, ChevronUp } from 'lucide-react';
+import { DollarSign, Lock, LockOpen, AlertCircle, Check, CreditCard, Banknote, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api } from '@/lib/axios';
 import { toast } from 'sonner';
 
@@ -20,18 +20,35 @@ interface CashSummary {
   closedAt: string;
 }
 
+interface DayData {
+  cash: number;
+  transfer: number;
+  cashReceived: number;
+  changeGiven: number;
+  total: number;
+  transactionCount: number;
+  opening?: number;
+}
+
+interface SaleSummary {
+  total?: number;
+  cashReceived?: number;
+  changeGiven?: number;
+  paymentMethod: 'EFECTIVO' | 'TRANSFERENCIA' | string;
+}
+
+const HISTORY_PAGE_SIZE = 10;
+
 export default function CashRegisterPage() {
   const [cashOpen, setCashOpen] = useState(false);
   const [openingAmount, setOpeningAmount] = useState('');
-  const [dayData, setDayData] = useState<any>(null);
+  const [dayData, setDayData] = useState<DayData | null>(null);
   const [history, setHistory] = useState<CashSummary[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyTotalPages, setHistoryTotalPages] = useState(1);
+  const [historyTotal, setHistoryTotal] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-
-  useEffect(() => {
-    loadCashStatus();
-    loadHistory();
-  }, []);
 
   const formatPrice = (price: number) => {
     const rounded = Math.round((Number(price) || 0) * 100) / 100;
@@ -48,17 +65,30 @@ export default function CashRegisterPage() {
     return `${year}-${month}-${day}`;
   };
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async (page: number) => {
     try {
-      const res = await api.get('/cash-register/history?limit=30');
-      setHistory(res.data || []);
+      const res = await api.get('/cash-register/history', {
+        params: { page, limit: HISTORY_PAGE_SIZE }
+      });
+      const data = res.data;
+
+      if (Array.isArray(data)) {
+        setHistory(data);
+        setHistoryTotal(data.length);
+        setHistoryTotalPages(1);
+        return;
+      }
+
+      setHistory(data?.items || []);
+      setHistoryTotal(data?.total || 0);
+      setHistoryTotalPages(data?.totalPages || 1);
     } catch (error) {
       console.error('Error al cargar historial:', error);
       toast.error('Error al cargar historial');
     }
-  };
+  }, []);
 
-  const loadCashStatus = () => {
+  const loadCashStatus = useCallback(() => {
     try {
       const saved = sessionStorage.getItem('cashOpen');
       const amount = sessionStorage.getItem('openingAmount');
@@ -77,7 +107,19 @@ export default function CashRegisterPage() {
     } catch (error) {
       console.error('Error al cargar estado de caja:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(loadCashStatus, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [loadCashStatus]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      loadHistory(historyPage);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [historyPage, loadHistory]);
 
   const handleOpenCash = async () => {
     const amount = parseFloat(openingAmount) || 0;
@@ -95,7 +137,7 @@ export default function CashRegisterPage() {
       setCashOpen(true);
       setDayData(null); // Limpiar datos del cierre anterior
       toast.success(`✓ Caja abierta con $${formatPrice(amount)}`);
-    } catch (error) {
+    } catch {
       toast.error('Error al abrir caja');
     } finally {
       setIsProcessing(false);
@@ -112,23 +154,23 @@ export default function CashRegisterPage() {
       const salesRes = await api.get('/sales/range', {
         params: { from: openedAt, to: closedAt }
       });
-      const sales = Array.isArray(salesRes.data) ? salesRes.data : [];
+      const sales: SaleSummary[] = Array.isArray(salesRes.data) ? salesRes.data : [];
       
       const cashTotal = sales
-        .filter((s: any) => s.paymentMethod === 'EFECTIVO')
-        .reduce((sum: number, s: any) => sum + (s.total || 0), 0);
+        .filter((s) => s.paymentMethod === 'EFECTIVO')
+        .reduce((sum, s) => sum + (s.total || 0), 0);
       
       const transferTotal = sales
-        .filter((s: any) => s.paymentMethod === 'TRANSFERENCIA')
-        .reduce((sum: number, s: any) => sum + (s.total || 0), 0);
+        .filter((s) => s.paymentMethod === 'TRANSFERENCIA')
+        .reduce((sum, s) => sum + (s.total || 0), 0);
 
       const cashReceivedTotal = sales
-        .filter((s: any) => s.paymentMethod === 'EFECTIVO')
-        .reduce((sum: number, s: any) => sum + (s.cashReceived || s.total || 0), 0);
+        .filter((s) => s.paymentMethod === 'EFECTIVO')
+        .reduce((sum, s) => sum + (s.cashReceived || s.total || 0), 0);
 
       const changeGivenTotal = sales
-        .filter((s: any) => s.paymentMethod === 'EFECTIVO')
-        .reduce((sum: number, s: any) => sum + (s.changeGiven || 0), 0);
+        .filter((s) => s.paymentMethod === 'EFECTIVO')
+        .reduce((sum, s) => sum + (s.changeGiven || 0), 0);
       
       const totalSales = cashTotal + transferTotal;
 
@@ -168,7 +210,11 @@ export default function CashRegisterPage() {
       setCashOpen(false);
       setOpeningAmount('');
       
-      await loadHistory();
+      if (historyPage === 1) {
+        await loadHistory(1);
+      } else {
+        setHistoryPage(1);
+      }
       
       toast.success('✓ Caja cerrada correctamente');
     } catch (error) {
@@ -394,7 +440,10 @@ export default function CashRegisterPage() {
             onClick={() => setShowHistory(!showHistory)}
             className="w-full p-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
           >
-            <h2 className="text-lg font-bold text-slate-800">Historial de Cajas</h2>
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">Historial de Cajas</h2>
+              <p className="text-sm text-slate-500">{historyTotal} cierres registrados</p>
+            </div>
             {showHistory ? (
               <ChevronUp className="text-slate-600" size={24} />
             ) : (
@@ -403,8 +452,9 @@ export default function CashRegisterPage() {
           </button>
 
           {showHistory && (
-            <div className="border-t-2 border-slate-200 divide-y-2 divide-slate-200">
-              {history.map((summary) => {
+            <div className="border-t-2 border-slate-200">
+              <div className="divide-y-2 divide-slate-200">
+                {history.map((summary) => {
                 const dayName = getDayName(summary.date);
                 const earned = summary.cash + summary.transfer;
 
@@ -441,7 +491,36 @@ export default function CashRegisterPage() {
                     </p>
                   </div>
                 );
-              })}
+                })}
+              </div>
+
+              {historyTotalPages > 1 && (
+                <div className="flex items-center justify-between gap-3 p-4 bg-slate-50">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setHistoryPage((page) => Math.max(1, page - 1))}
+                    disabled={historyPage <= 1}
+                    className="h-10"
+                  >
+                    <ChevronLeft size={18} />
+                    Anterior
+                  </Button>
+                  <span className="text-sm font-semibold text-slate-600">
+                    Pagina {historyPage} de {historyTotalPages}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setHistoryPage((page) => Math.min(historyTotalPages, page + 1))}
+                    disabled={historyPage >= historyTotalPages}
+                    className="h-10"
+                  >
+                    Siguiente
+                    <ChevronRight size={18} />
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

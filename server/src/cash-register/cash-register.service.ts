@@ -41,11 +41,27 @@ export class CashRegisterService {
     });
   }
 
-  async getCashHistory(limit: number = 30) {
-    return this.prisma.cashRegister.findMany({
-      orderBy: { closedAt: 'desc' },
-      take: limit
-    });
+  async getCashHistory(page: number = 1, limit: number = 10) {
+    const safePage = Math.max(1, page || 1);
+    const safeLimit = Math.min(Math.max(1, limit || 10), 100);
+    const skip = (safePage - 1) * safeLimit;
+
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.cashRegister.findMany({
+        orderBy: { closedAt: 'desc' },
+        skip,
+        take: safeLimit
+      }),
+      this.prisma.cashRegister.count()
+    ]);
+
+    return {
+      items,
+      total,
+      page: safePage,
+      limit: safeLimit,
+      totalPages: Math.max(1, Math.ceil(total / safeLimit))
+    };
   }
 
   async getTodayCash() {

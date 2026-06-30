@@ -36,9 +36,12 @@ export class CashRegisterController {
   }
 
   @Get('history')
-  async getHistory(@Query('limit') limit: string = '30') {
+  async getHistory(
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '10'
+  ) {
     try {
-      return await this.cashRegisterService.getCashHistory(parseInt(limit));
+      return await this.cashRegisterService.getCashHistory(parseInt(page), parseInt(limit));
     } catch (error) {
       console.error('Error al obtener historial:', error);
       throw error;

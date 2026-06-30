@@ -1,0 +1,42 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Circle background -->
+  <circle cx="100" cy="100" r="95" fill="#2D2D2D" stroke="#000" stroke-width="3"/>
+  <circle cx="100" cy="100" r="88" fill="none" stroke="#FFF" stroke-width="2"/>
+  
+  <!-- Bottle -->
+  <g>
+    <!-- Bottle neck -->
+    <rect x="92" y="45" width="16" height="25" fill="#E8D4B8" stroke="#000" stroke-width="1.5"/>
+    <!-- Bottle cap -->
+    <rect x="89" y="40" width="22" height="6" fill="#8B7355" stroke="#000" stroke-width="1"/>
+    <!-- Bottle top -->
+    <ellipse cx="100" cy="45" rx="9" ry="3" fill="#D4A574" stroke="#000" stroke-width="1"/>
+    
+    <!-- Main bottle body -->
+    <path d="M 85 70 Q 80 85 80 110 Q 80 130 90 145 L 110 145 Q 120 130 120 110 Q 120 85 115 70 Z" 
+          fill="#C9A961" stroke="#000" stroke-width="1.5"/>
+    
+    <!-- Bottle shine/highlight -->
+    <ellipse cx="88" cy="95" rx="4" ry="15" fill="#F5E6D3" opacity="0.6"/>
+  </g>
+  
+  <!-- Wine Glass -->
+  <g>
+    <!-- Glass bowl -->
+    <path d="M 130 65 L 140 85 Q 142 95 140 105 Q 138 120 130 125 Z" 
+          fill="#E8F4F8" stroke="#000" stroke-width="1.5" opacity="0.8"/>
+    
+    <!-- Glass stem -->
+    <line x1="135" y1="125" x2="135" y2="145" stroke="#000" stroke-width="2"/>
+    
+    <!-- Glass base -->
+    <ellipse cx="135" cy="145" rx="10" ry="4" fill="#E8F4F8" stroke="#000" stroke-width="1.5" opacity="0.8"/>
+    
+    <!-- Wine in glass -->
+    <path d="M 131 95 Q 133 100 132 105 Q 131 110 130 112 Z" 
+          fill="#8B0000" opacity="0.7"/>
+    
+    <!-- Glass shine -->
+    <line x1="132" y1="75" x2="134" y2="115" stroke="#FFF" stroke-width="1" opacity="0.4"/>
+  </g>
+</svg>
