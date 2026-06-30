@@ -28,13 +28,12 @@ cd client
 call npm install
 cd ..
 
-cd server
-npx prisma migrate deploy
-npx prisma generate
-cd ..
+cd /d "%~dp0"
+npx prisma migrate deploy --schema prisma/schema.prisma
+npx prisma generate --schema prisma/schema.prisma
 
-start "Backend" cmd /c "cd server && npm run start:dev"
-start "Frontend" cmd /c "cd client && npm run dev"
+start "Backend" cmd /c "cd /d \"%~dp0server\" && npm run start:dev"
+start "Frontend" cmd /c "cd /d \"%~dp0client\" && npm run dev"
 
 timeout /t 8 /nobreak >nul
 start http://localhost:3000
